@@ -140,7 +140,13 @@ echo
 # Detectar CPU
 # ------------------------------------------------------------
 
-CPU_MODEL=$(lscpu | grep -m1 "Model name:" | sed 's/Model name:[[:space:]]*//')
+CPU_MODEL=$(awk -F': ' '/^model name/ {print $2; exit}' /proc/cpuinfo)
+
+# Fallback caso não seja possível obter o modelo
+if [[ -z "$CPU_MODEL" ]]; then
+    CPU_MODEL="Não identificado"
+fi
+
 CPU_CORES=$(nproc)
 
 echo "CPU     : $CPU_MODEL"
@@ -150,7 +156,7 @@ echo "Threads : $CPU_CORES"
 # Detectar RAM
 # ------------------------------------------------------------
 
-RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+RAM_MB=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)
 RAM_GB=$((RAM_MB / 1024))
 
 echo "RAM     : aproximadamente ${RAM_GB} GB"
