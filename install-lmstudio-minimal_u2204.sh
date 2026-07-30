@@ -568,6 +568,8 @@ echo
 
 echo "Baixe o LM Studio para Linux no site oficial."
 echo
+echo "	https://lmstudio.ai/"
+echo
 echo "Depois coloque o arquivo .AppImage em:"
 echo
 echo "  $LM_DIR"
