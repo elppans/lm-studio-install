@@ -1,848 +1,378 @@
-# LM Studio Minimal Install
-
-Script Bash para preparar e otimizar uma instalação do **LM Studio no Ubuntu 22.04**, com foco em notebooks com recursos limitados, especialmente sistemas com **8 GB de RAM** e processadores Intel de baixo consumo.
-
-O objetivo deste projeto é preparar o sistema para executar modelos de linguagem locais (**LLMs**) utilizando o menor consumo de recursos possível, evitando a instalação de componentes e serviços desnecessários.
-
-> **Status do projeto:** funcional
-> **Sistema principal:** Ubuntu 22.04
-> **Arquitetura:** x86_64
-> **Licença:** MIT
+# LM Studio AHC — Automatic Hardware Configuration
 
----
+Instalador e configurador **multi-distribuição** para o [LM Studio](https://lmstudio.ai/), pensado principalmente para máquinas com recursos limitados.
 
-## 📋 Índice
+O projeto **AHC (Automatic Hardware Configuration)** detecta o hardware e os recursos disponíveis antes de sugerir uma configuração de inferência local.
 
-* [Sobre o projeto](#-sobre-o-projeto)
-* [Objetivos](#-objetivos)
-* [Hardware de referência](#-hardware-de-referência)
-* [Configuração recomendada](#-configuração-recomendada)
-* [O que o script faz](#-o-que-o-script-faz)
-* [O que o script não faz](#-o-que-o-script-não-faz)
-* [Requisitos](#-requisitos)
-* [Instalação](#-instalação)
-* [Download do LM Studio](#-download-do-lm-studio)
-* [Estrutura de diretórios](#-estrutura-de-diretórios)
-* [Ferramenta de diagnóstico](#-ferramenta-de-diagnóstico)
-* [Configuração recomendada no LM Studio](#-configuração-recomendada-no-lm-studio)
-* [Swap e memória](#-swap-e-memória)
-* [Swappiness](#-swappiness)
-* [Remover as otimizações](#-remover-as-otimizações)
-* [Desempenho esperado](#-desempenho-esperado)
-* [Limitações](#-limitações)
-* [Segurança](#-segurança)
-* [Contribuições](#-contribuições)
-* [Licença](#-licença)
+> **Status:** primeira versão experimental. Teste em uma máquina não crítica antes de usar em produção.
 
----
+## Objetivo
 
-# 🤖 Sobre o projeto
+A ideia do AHC não é simplesmente instalar o LM Studio.
 
-Este projeto fornece um script para preparar um ambiente Linux para utilização do **LM Studio** em computadores com hardware mais limitado.
+O objetivo é:
 
-A configuração foi pensada principalmente para notebooks com:
+1. detectar a distribuição Linux;
+2. detectar arquitetura, CPU, AVX/AVX2, RAM e Swap;
+3. detectar GPU e Vulkan quando possível;
+4. instalar as dependências mínimas para o AppImage;
+5. instalar o LM Studio em espaço de usuário;
+6. oferecer perfis **Mínimo**, **Recomendado** e **Personalizado**;
+7. usar `lms` para baixar modelos GGUF;
+8. executar `--estimate-only` antes de carregar o modelo;
+9. carregar o modelo somente depois da confirmação do usuário.
 
-* 8 GB de RAM;
-* processadores Intel de baixo consumo;
-* GPU integrada;
-* pouca disponibilidade de memória;
-* necessidade de executar modelos locais de pequeno porte.
+## Distribuições
 
-O foco é manter o sistema operacional funcional enquanto o modelo de IA está sendo executado, reduzindo a possibilidade de falta de memória e evitando serviços adicionais desnecessários.
+O script possui lógica para as seguintes famílias:
 
-O script não tenta transformar um hardware limitado em uma máquina de alto desempenho para IA. O objetivo é encontrar um equilíbrio entre:
+- Debian / Ubuntu e derivados
+- Fedora e derivados
+- openSUSE e derivados
+- Arch Linux e derivados
 
-* consumo de memória;
-* consumo de CPU;
-* estabilidade;
-* velocidade;
-* capacidade de execução de modelos locais.
+Exemplos de derivados detectados incluem Linux Mint, Pop!_OS, Zorin, Nobara, Manjaro, EndeavourOS e BIG Linux.
 
----
+A compatibilidade real depende do AppImage, do driver gráfico e das bibliotecas disponíveis no sistema.
 
-# 🎯 Objetivos
+## Requisitos
 
-O projeto busca fornecer uma configuração mínima e conservadora para executar o LM Studio.
+- Linux 64-bit (`x86_64` ou `aarch64/arm64`)
+- usuário normal com acesso a `sudo` quando dependências precisam ser instaladas
+- conexão com a Internet durante download do LM Studio/modelos
+- GPU/Vulkan é desejável, mas o objetivo é também permitir uso em CPU
 
-Principais objetivos:
+O LM Studio para Linux é distribuído como AppImage. Consulte os requisitos e downloads oficiais antes de usar:
 
-* Preparar o Ubuntu 22.04;
-* Detectar informações básicas de hardware;
-* Verificar a quantidade de RAM disponível;
-* Identificar a GPU instalada;
-* Verificar a existência de memória swap;
-* Criar swap quando necessário;
-* Configurar `vm.swappiness=10`;
-* Criar uma estrutura organizada para o LM Studio;
-* Criar scripts auxiliares;
-* Criar um lançador no menu de aplicações;
-* Evitar serviços rodando permanentemente em segundo plano;
-* Evitar a instalação de componentes desnecessários;
-* Fornecer uma configuração inicial adequada para computadores com pouca RAM.
+- https://lmstudio.ai/docs/app/system-requirements
+- https://lmstudio.ai/download
+- https://lmstudio.ai/docs/cli
 
----
-
-# 💻 Hardware de referência
-
-O script foi desenvolvido tendo como referência um notebook com configuração semelhante a:
-
-| Componente            | Configuração         |
-| --------------------- | -------------------- |
-| Fabricante            | ASUS                 |
-| Modelo                | VivoBook X515JA      |
-| Processador           | Intel Core i3-1005G1 |
-| Núcleos               | 2                    |
-| Threads               | 4                    |
-| Memória               | 8 GB DDR4            |
-| Velocidade da memória | 3200 MT/s            |
-| GPU                   | Intel integrada      |
-| Sistema               | Ubuntu 22.04         |
-
-O hardware de referência possui apenas **8 GB de RAM**, portanto o objetivo principal é executar modelos pequenos e manter o consumo de memória sob controle.
-
-> O script pode ser utilizado em outros computadores, mas a configuração ideal pode variar de acordo com o hardware disponível.
-
----
-
-# ⚙️ Configuração recomendada
-
-Para computadores com aproximadamente 8 GB de RAM, a configuração inicial recomendada é:
-
-| Parâmetro         | Valor  |
-| ----------------- | ------ |
-| Tamanho do modelo | 1B–2B  |
-| Formato           | GGUF   |
-| Quantização       | Q4_K_M |
-| Context Length    | 2048   |
-| CPU Threads       | 2      |
-| GPU Offload       | Auto   |
-| GPU Layers        | Auto   |
-
-## Por que utilizar modelos 1B–2B?
-
-Modelos menores exigem menos memória e tendem a ser mais adequados para computadores com recursos limitados.
-
-A recomendação é começar com modelos entre **1B e 2B parâmetros** e avaliar o desempenho antes de tentar modelos maiores.
-
-## Por que Q4_K_M?
-
-A quantização **Q4_K_M** oferece um bom equilíbrio entre:
-
-* tamanho do modelo;
-* consumo de memória;
-* velocidade;
-* qualidade da resposta.
-
-O objetivo é reduzir o consumo de recursos sem utilizar uma quantização excessivamente agressiva.
-
-## Por que Context Length 2048?
-
-O tamanho do contexto influencia diretamente o consumo de memória.
-
-Em máquinas com apenas 8 GB de RAM, começar com:
-
-```text
-2048
-```
-
-é uma escolha conservadora.
-
-Se o sistema estiver funcionando de forma estável, o usuário poderá experimentar valores maiores posteriormente.
-
-## Por que apenas 2 CPU Threads?
-
-O hardware de referência possui 2 núcleos e 4 threads.
-
-A utilização inicial de 2 threads permite deixar recursos disponíveis para:
-
-* Ubuntu;
-* ambiente gráfico;
-* navegador;
-* terminal;
-* outros processos do sistema.
-
-Dependendo do hardware, utilizar 4 threads pode aumentar o desempenho, mas também pode tornar o sistema menos responsivo.
-
----
-
-# 🔧 O que o script faz
-
-O script `install-lmstudio-minimal_u2204.sh` executa as seguintes tarefas.
-
-## 1. Verifica privilégios
-
-O script não deve ser executado diretamente como `root`.
-
-Ele utiliza `sudo` somente quando necessário.
-
-Exemplo:
-
-```bash
-./install-lmstudio-minimal_u2204.sh
-```
-
----
-
-## 2. Verifica o sistema operacional
-
-O script verifica se o sistema é Ubuntu e se a versão é a 22.04.
-
-Caso seja detectado outro sistema ou outra versão, o usuário é avisado e pode decidir se deseja continuar.
-
----
-
-## 3. Detecta o hardware
-
-São coletadas informações básicas sobre:
-
-* sistema operacional;
-* kernel;
-* processador;
-* quantidade de threads;
-* memória RAM;
-* GPU.
-
-Essas informações são exibidas durante a execução.
-
----
-
-## 4. Instala dependências mínimas
-
-O script instala apenas ferramentas básicas utilizadas pelo próprio processo:
-
-```text
-curl
-wget
-pciutils
-procps
-util-linux
-```
-
-Não são instalados:
-
-* CUDA;
-* Docker;
-* Ollama;
-* servidores adicionais;
-* serviços systemd;
-* ferramentas de monitoramento de temperatura;
-* outros componentes que não sejam necessários para a configuração mínima.
-
----
-
-## 5. Cria a estrutura do LM Studio
-
-O diretório principal utilizado pelo projeto é:
-
-```text
-~/LMStudio
-```
-
-Dentro dele são criados:
-
-```text
-~/LMStudio/
-├── config/
-└── tools/
-```
-
----
-
-## 6. Verifica o Swap
-
-O script verifica a quantidade de swap disponível no sistema.
-
-Caso exista pelo menos 4 GB de swap, nenhuma alteração é feita.
-
-Caso exista menos de 4 GB, o script oferece a possibilidade de criar um arquivo:
-
-```text
-/swapfile
-```
-
-com:
-
-```text
-8 GB
-```
-
-O swap não aumenta a velocidade do LM Studio.
-
-Sua finalidade é fornecer uma área adicional de memória virtual e reduzir o risco de problemas quando a RAM física estiver completamente ocupada.
-
-> O uso de swap é significativamente mais lento que a RAM física. Portanto, swap não substitui um upgrade de memória RAM.
-
----
-
-## 7. Configura o Swappiness
-
-O script cria:
-
-```text
-/etc/sysctl.d/99-lmstudio-minimal.conf
-```
-
-com:
-
-```text
-vm.swappiness=10
-```
-
-A configuração é aplicada imediatamente.
-
-O objetivo é reduzir a tendência do kernel de utilizar swap enquanto ainda existe memória RAM disponível.
-
----
-
-## 8. Cria recomendações de configuração
-
-O arquivo:
-
-```text
-~/LMStudio/config/recomendacoes.txt
-```
-
-contém a configuração recomendada para o hardware de referência.
-
----
-
-## 9. Cria ferramenta de diagnóstico
-
-O script cria:
-
-```text
-~/LMStudio/tools/lmstudio-info.sh
-```
-
-Essa ferramenta mostra informações sobre:
-
-* sistema operacional;
-* kernel;
-* CPU;
-* RAM;
-* swap;
-* swappiness;
-* GPU;
-* carga do sistema;
-* processos que mais utilizam memória.
-
----
-
-## 10. Cria script de inicialização
-
-O script:
-
-```text
-~/LMStudio/tools/lmstudio-start.sh
-```
-
-procura automaticamente por um arquivo:
-
-```text
-*.AppImage
-```
-
-dentro de:
-
-```text
-~/LMStudio
-```
-
-Se encontrar o AppImage, ele é executado.
-
----
-
-## 11. Cria lançador no menu
-
-É criado um arquivo `.desktop` em:
-
-```text
-~/.local/share/applications/
-```
-
-Isso permite iniciar o LM Studio pelo menu de aplicações do ambiente gráfico.
-
----
-
-# ❌ O que o script não faz
-
-O script **não instala automaticamente o LM Studio**.
-
-O motivo é evitar depender de uma URL ou versão específica do AppImage.
-
-O usuário deve baixar o LM Studio diretamente do site oficial e colocar o arquivo `.AppImage` no diretório:
-
-```text
-~/LMStudio
-```
-
-O script também não instala automaticamente modelos de IA.
-
-Isso permite que cada usuário escolha o modelo que deseja utilizar.
-
----
-
-# 📦 Requisitos
-
-## Sistema operacional
-
-Recomendado:
-
-```text
-Ubuntu 22.04
-```
-
-## Arquitetura
-
-```text
-x86_64
-```
-
-## Requisitos básicos
-
-* Ubuntu instalado;
-* acesso à Internet;
-* usuário com privilégios `sudo`;
-* aproximadamente 8 GB ou mais de RAM;
-* espaço livre em disco para o LM Studio e os modelos.
-
----
-
-# 🚀 Instalação
+## Instalação
 
 Clone o repositório:
 
 ```bash
 git clone https://github.com/elppans/lm-studio-install.git
-```
-
-Entre no diretório:
-
-```bash
 cd lm-studio-install
 ```
 
-Dê permissão de execução:
+Dê permissão:
 
 ```bash
-chmod +x install-lmstudio-minimal_u2204.sh
+chmod +x install-lmstudio-ahc.sh
 ```
 
-Execute:
+Execute como usuário normal:
 
 ```bash
-./install-lmstudio-minimal_u2204.sh
+./install-lmstudio-ahc.sh
 ```
 
-O script solicitará confirmação antes de criar o swap, caso seja necessário.
+**Não execute como `root`.**
 
----
+## O que o AHC detecta
 
-# 📥 Download do LM Studio
-
-Após executar o script, baixe o LM Studio para Linux diretamente do site oficial:
-
-https://lmstudio.ai/
-
-Baixe a versão para Linux compatível com seu sistema.
-
-Coloque o arquivo `.AppImage` no diretório:
+Exemplo de informações utilizadas:
 
 ```text
-~/LMStudio
+Sistema
+Família da distribuição
+Arquitetura
+Kernel
+CPU
+Threads
+AVX
+AVX2
+RAM total
+RAM disponível
+Swap total
+Swap utilizada
+GPU
+Vulkan
 ```
+
+A memória disponível é obtida a partir de `MemAvailable`, em vez de usar apenas `MemFree`.
+
+Isso é importante porque o Linux pode liberar cache quando um processo precisa de memória.
+
+## Perfis
+
+### Mínimo
+
+Para máquinas com pouca memória ou para priorizar simplicidade:
+
+```text
+Modelo:       Qwen3 1.7B
+Quantização:  Q4_K_M
+Contexto:     2048
+Parallel:     1
+GPU:          Auto
+Reasoning:    OFF
+```
+
+### Recomendado
+
+Para usar o mesmo modelo com capacidade de raciocínio:
+
+```text
+Modelo:       Qwen3 1.7B
+Quantização:  Q4_K_M
+Contexto:     2048
+Parallel:     1
+GPU:          Auto
+Reasoning:    ON
+```
+
+### Personalizado
+
+Permite escolher:
+
+- modelo;
+- contexto;
+- parallel;
+- reasoning.
+
+## Por que 1.7B / Q4_K_M?
+
+O projeto é inicialmente voltado a computadores com aproximadamente 8 GB de RAM.
+
+Durante os testes de referência, foi utilizado:
+
+```text
+CPU:       x86_64 / AVX2
+RAM:       7.5 GiB
+GPU:       Intel UHD Graphics (ICL GT1)
+Vulkan:    disponível
+Contexto:  2048
+Parallel:  1
+Modelo:    Qwen3 1.7B
+```
+
+O `lms load --estimate-only` informou:
+
+```text
+Estimated GPU Memory:   1.19 GiB
+Estimated Total Memory: 1.19 GiB
+```
+
+O valor é uma estimativa do runtime e não uma garantia de consumo constante.
+
+## Benchmark de referência
+
+No hardware acima, com o modelo Qwen3 1.7B Q4_K_M:
+
+### Carregamento
+
+```text
+Model loaded successfully in 19.04s.
+```
+
+### Reasoning ON
+
+```text
+Tokens/Second:       6.53
+Time to First Token: 4.006s
+Predicted Tokens:    144
+```
+
+### Reasoning OFF
+
+```text
+Tokens/Second:       6.84
+Time to First Token: 2.554s
+Predicted Tokens:    27
+```
+
+Esses números são apenas referências de uma máquina específica. Eles não devem ser tratados como benchmark universal.
+
+Também foi observado que, quando o modelo já estava carregado, o tempo até o primeiro token de uma pergunta mais complexa chegou a:
+
+```text
+Time to First Token: 0.168s
+Tokens/Second:        6.47
+```
+
+Isso demonstra a diferença entre **cold start** e **warm inference**.
+
+## Swap
+
+O AHC **não cria nem redimensiona Swap automaticamente**.
+
+Isso é proposital.
+
+Swap pode evitar falta imediata de memória, mas utilizar Swap intensivamente pode reduzir bastante o desempenho de inferência.
+
+O script apenas informa a situação.
 
 Exemplo:
 
 ```text
-~/LMStudio/LM-Studio-*.AppImage
+RAM disponível: 2.3 GiB
+Swap:           3.9 / 4.0 GiB
 ```
 
-Dê permissão de execução:
+Se a Swap estiver muito utilizada, recomenda-se fechar aplicativos desnecessários antes de carregar modelos.
+
+## Instalação do LM Studio
+
+O AppImage é colocado no espaço do usuário:
+
+```text
+~/.local/opt/lm-studio/LM-Studio.AppImage
+```
+
+Um launcher é criado em:
+
+```text
+~/.local/bin/lmstudio
+```
+
+E um atalho desktop em:
+
+```text
+~/.local/share/applications/lm-studio-ahc.desktop
+```
+
+O AHC não cria um serviço systemd para manter o LM Studio executando em segundo plano.
+
+## Modelos
+
+O AHC utiliza o CLI `lms` fornecido pelo LM Studio.
+
+Exemplos:
 
 ```bash
-chmod +x ~/LMStudio/*.AppImage
+lms ls
 ```
-
-Depois execute:
 
 ```bash
-~/LMStudio/tools/lmstudio-start.sh
+lms ps
 ```
-
-O LM Studio também poderá ser iniciado pelo menu de aplicações do sistema.
-
----
-
-# 🗂️ Estrutura de diretórios
-
-Após a execução do script, a estrutura será semelhante a:
-
-```text
-~/LMStudio/
-├── config/
-│   └── recomendacoes.txt
-│
-├── tools/
-│   ├── lmstudio-info.sh
-│   ├── lmstudio-start.sh
-│   └── remove-lmstudio-tuning.sh
-│
-└── LM-Studio-*.AppImage
-```
-
----
-
-# 🔍 Ferramenta de diagnóstico
-
-Para verificar o estado atual do sistema:
 
 ```bash
-~/LMStudio/tools/lmstudio-info.sh
+lms runtime ls
 ```
-
-O comando exibirá informações semelhantes a:
-
-```text
-============================================================
-LM STUDIO - DIAGNÓSTICO DO SISTEMA
-============================================================
-
-SISTEMA
-------------------------------------------------------------
-
-CPU
-------------------------------------------------------------
-
-MEMÓRIA
-------------------------------------------------------------
-
-SWAP
-------------------------------------------------------------
-
-SWAPPINESS
-------------------------------------------------------------
-
-GPU
-------------------------------------------------------------
-
-USO ATUAL
-------------------------------------------------------------
-
-PROCESSOS COM MAIOR CONSUMO DE RAM
-------------------------------------------------------------
-```
-
-Essa ferramenta é útil para verificar se o sistema possui memória suficiente antes de carregar um modelo.
-
-Também pode ser utilizada durante testes para identificar processos que estejam consumindo muita RAM.
-
----
-
-# ⚙️ Configuração recomendada no LM Studio
-
-Para o hardware de referência, recomenda-se começar com:
-
-```text
-Modelo:          1B–2B
-Formato:         GGUF
-Quantização:     Q4_K_M
-Context Length:  2048
-CPU Threads:     2
-GPU Offload:     Auto
-GPU Layers:      Auto
-```
-
-## Configuração inicial
-
-Comece com:
-
-```text
-Context Length = 2048
-CPU Threads    = 2
-GPU Offload    = Auto
-GPU Layers     = Auto
-```
-
-Evite inicialmente utilizar modelos muito grandes.
-
-Em um sistema com 8 GB de RAM, não é recomendado começar diretamente com modelos de 7B ou 8B.
-
-Primeiro teste um modelo de 1B ou 2B.
-
-Depois, caso o sistema permaneça estável e exista memória disponível, outros modelos e configurações podem ser testados.
-
----
-
-# 🧠 Swap e memória
-
-A quantidade de RAM disponível é um dos principais fatores que limitam a execução de modelos locais.
-
-Um sistema com:
-
-```text
-8 GB RAM
-```
-
-precisa dividir essa memória entre:
-
-* kernel Linux;
-* ambiente gráfico;
-* aplicativos;
-* LM Studio;
-* modelo de IA;
-* contexto do modelo;
-* memória utilizada pela GPU integrada.
-
-Em GPUs integradas, parte da memória gráfica também pode ser compartilhada com a memória principal do sistema.
-
-Por isso, utilizar modelos pequenos é importante quando o objetivo é manter o computador responsivo.
-
-O swap pode ajudar quando a memória RAM estiver esgotada, mas não deve ser considerado um substituto da RAM física.
-
----
-
-# 🔄 Swappiness
-
-O script configura:
-
-```text
-vm.swappiness=10
-```
-
-A configuração pode ser verificada com:
 
 ```bash
-cat /proc/sys/vm/swappiness
+lms runtime survey
 ```
 
-Resultado esperado:
-
-```text
-10
-```
-
-O arquivo utilizado pelo projeto é:
-
-```text
-/etc/sysctl.d/99-lmstudio-minimal.conf
-```
-
----
-
-# 🧹 Remover as otimizações
-
-O projeto fornece:
+Estimar um modelo:
 
 ```bash
-~/LMStudio/tools/remove-lmstudio-tuning.sh
+lms load "qwen/qwen3-1.7b" \
+    --context-length 2048 \
+    --parallel 1 \
+    --estimate-only
 ```
+
+Carregar:
+
+```bash
+lms load "qwen/qwen3-1.7b" \
+    --context-length 2048 \
+    --parallel 1 \
+    -y
+```
+
+Descarregar:
+
+```bash
+lms unload "qwen/qwen3-1.7b"
+```
+
+Testar:
+
+```bash
+lms chat "qwen/qwen3-1.7b" \
+    --dont-fetch-catalog \
+    --stats \
+    --reasoning off \
+    -p "Explique em uma frase o que é Linux."
+```
+
+## Remoção
 
 Execute:
 
 ```bash
-~/LMStudio/tools/remove-lmstudio-tuning.sh
+chmod +x uninstall-lmstudio-ahc.sh
+./uninstall-lmstudio-ahc.sh
 ```
 
-Esse script remove a configuração:
+O desinstalador remove o AppImage e os arquivos criados pelo AHC.
 
-```text
-/etc/sysctl.d/99-lmstudio-minimal.conf
-```
+**Os modelos não são removidos automaticamente.**
 
-e restaura o comportamento padrão do `swappiness`.
+Isso evita apagar vários gigabytes de modelos sem confirmação explícita.
 
-Por segurança, o script **não remove automaticamente o `/swapfile`**.
+## Segurança e alterações no sistema
 
-Caso você tenha criado o swapfile pelo instalador e queira removê-lo manualmente:
+O AHC foi projetado para ser conservador.
+
+Ele **não** altera automaticamente:
+
+- regras de firewall;
+- `/etc/sysctl.conf`;
+- governor da CPU;
+- parâmetros do kernel;
+- serviços systemd;
+- configurações de rede;
+- Swap existente.
+
+Dependências ausentes podem ser instaladas pelo gerenciador de pacotes da distribuição usando `sudo`.
+
+## Limitações atuais
+
+A primeira versão ainda possui limitações:
+
+- a detecção de GPU/Vulkan depende das ferramentas disponíveis;
+- o download automático do AppImage depende da página oficial permitir a descoberta da URL;
+- modelos e quantizações disponíveis no catálogo podem mudar;
+- a recomendação de modelo ainda é conservadora e baseada principalmente em recursos;
+- o AHC ainda não faz benchmark automático de todos os modelos candidatos;
+- o perfil recomendado atualmente usa o mesmo modelo pequeno do perfil mínimo em máquinas de baixa memória.
+
+## Próximas etapas
+
+Planejamento do projeto:
+
+- [ ] melhorar a descoberta da URL do AppImage;
+- [ ] detectar melhor Intel / AMD / NVIDIA;
+- [ ] detectar VRAM e memória compartilhada;
+- [ ] consultar `lms runtime survey` automaticamente;
+- [ ] comparar `--estimate-only` com a RAM disponível;
+- [ ] gerar recomendações de modelos por faixa de RAM;
+- [ ] testar Q3/Q4/Q5 quando apropriado;
+- [ ] benchmark automático após instalação;
+- [ ] detectar e configurar Reasoning;
+- [ ] gerar relatório final;
+- [ ] adicionar modo `--dry-run`;
+- [ ] adicionar modo não interativo para automação;
+- [ ] melhorar suporte a ARM64;
+- [ ] testes específicos por distribuição.
+
+## Desenvolvimento
+
+Executar com rastreamento:
 
 ```bash
-sudo swapoff /swapfile
+bash -x ./install-lmstudio-ahc.sh
 ```
 
-Remova a entrada correspondente de:
+Isso é útil para diagnóstico, mas **não é necessário para uso normal**.
 
-```text
-/etc/fstab
-```
-
-Depois:
+Uso normal:
 
 ```bash
-sudo rm -f /swapfile
+./install-lmstudio-ahc.sh
 ```
 
-> Tenha cuidado ao editar `/etc/fstab`. Remova somente a linha correspondente ao `/swapfile` criado por este projeto.
+## Licença
+
+Escolha a licença do projeto conforme sua preferência. Para software livre permissivo, MIT é uma opção simples.
 
 ---
 
-# 📊 Desempenho esperado
-
-O desempenho de modelos locais depende de vários fatores:
-
-* modelo utilizado;
-* quantidade de parâmetros;
-* quantização;
-* tamanho do contexto;
-* CPU;
-* GPU;
-* quantidade de RAM;
-* velocidade da memória;
-* aceleração disponível;
-* temperatura do equipamento.
-
-Este projeto não tem como objetivo maximizar o número de tokens por segundo.
-
-O objetivo principal é obter uma configuração que permita utilizar modelos locais pequenos mantendo o sistema operacional utilizável.
-
-Em hardware limitado, uma configuração mais conservadora pode proporcionar uma experiência melhor do que tentar carregar um modelo muito grande e provocar uso excessivo de RAM e swap.
-
----
-
-# ⚠️ Limitações
-
-Este projeto foi desenvolvido com foco em um cenário específico:
-
-```text
-Ubuntu 22.04
-8 GB RAM
-CPU Intel de baixo consumo
-GPU integrada
-```
-
-Computadores com hardware diferente podem apresentar resultados diferentes.
-
-O script não garante:
-
-* aceleração por GPU;
-* determinado número de tokens por segundo;
-* compatibilidade com todos os modelos;
-* execução de modelos grandes;
-* funcionamento de todas as opções de aceleração disponíveis no LM Studio.
-
-A disponibilidade de aceleração por GPU depende do hardware, dos drivers, do backend utilizado e da versão do LM Studio.
-
----
-
-# 🔐 Segurança
-
-O script não solicita a senha do usuário diretamente.
-
-Quando necessário, utiliza o mecanismo padrão:
-
-```bash
-sudo
-```
-
-O usuário pode revisar o código antes de executar.
-
-Recomenda-se sempre verificar scripts Bash obtidos da Internet antes de executá-los com privilégios administrativos.
-
-Para visualizar o código:
-
-```bash
-less install-lmstudio-minimal_u2204.sh
-```
-
-Para verificar a sintaxe do script:
-
-```bash
-bash -n install-lmstudio-minimal_u2204.sh
-```
-
-O projeto não instala:
-
-* mineradores;
-* serviços ocultos;
-* processos persistentes;
-* Docker;
-* Ollama;
-* CUDA;
-* servidores externos;
-* serviços systemd adicionais.
-
----
-
-# 🧪 Verificação antes da execução
-
-Antes de executar o instalador:
-
-```bash
-bash -n install-lmstudio-minimal_u2204.sh
-```
-
-Se não houver nenhuma mensagem de erro, a sintaxe Bash está válida.
-
-Depois:
-
-```bash
-chmod +x install-lmstudio-minimal_u2204.sh
-```
-
-E execute:
-
-```bash
-./install-lmstudio-minimal_u2204.sh
-```
-
----
-
-# 🤝 Contribuições
-
-Sugestões, correções e melhorias são bem-vindas.
-
-Se você encontrar um problema, abra uma **Issue** informando:
-
-* versão do Ubuntu;
-* modelo do processador;
-* quantidade de RAM;
-* GPU;
-* saída de `~/LMStudio/tools/lmstudio-info.sh`;
-* mensagem de erro apresentada pelo script.
-
-Pull Requests também são bem-vindos.
-
----
-
-# 📄 Licença
-
-Este projeto está disponível sob a licença MIT.
-
-Consulte o arquivo:
-
-```text
-LICENSE
-```
-
-para obter os termos completos da licença.
-
----
-
-# ⭐ Considerações finais
-
-Este projeto foi criado com o objetivo de facilitar a preparação de computadores com recursos limitados para utilização de IA local através do LM Studio.
-
-A filosofia do projeto é simples:
-
-> **Usar apenas o necessário, consumir o mínimo possível e manter o sistema estável.**
-
-A configuração recomendada para começar é:
-
-```text
-1B–2B
-Q4_K_M
-Context 2048
-CPU Threads 2
-GPU Offload Auto
-GPU Layers Auto
-```
-
-A partir dessa configuração, o usuário pode realizar seus próprios testes e aumentar gradualmente o tamanho do modelo ou o contexto conforme a capacidade do hardware.
-
----
-
-## 🔗 Links
-
-* **Repositório:** https://github.com/elppans/lm-studio-install
-* **LM Studio:** https://lmstudio.ai/
-* **LM Studio Downloads:** https://lmstudio.ai/download
+Projeto: https://github.com/elppans/lm-studio-install
